@@ -45,6 +45,10 @@ Hoja de ruta: ver [docs/PROMPT.md](docs/PROMPT.md).
 
 ASCII · Bloques · Braille (2×4 puntos por celda, 8× más resolución, dithering Bayer) · Bordes (`| / - \\` según el gradiente de Sobel). Combinables con los colores Mono, Fósforo, Ámbar y Color real.
 
+## Imágenes
+
+`Archivo → Abrir imagen…` (Cmd+O), el botón del panel o arrastrar un archivo sobre la ventana. Formatos: PNG, JPG, BMP, WebP, GIF (primer fotograma) y TIFF. Respeta la orientación EXIF; la transparencia se compone sobre negro. «Usar cámara» vuelve a la cámara.
+
 ## Atajos
 
 Espacio pausa · S guardar PNG+TXT · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QSettings, QTimer, Qt
-from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMainWindow, QStatusBar,
                                QWidget)
 
@@ -15,6 +15,7 @@ from ..capture import CameraSource, State
 from ..config import MODES, Settings
 from ..engine import Engine, fit_grid
 from ..glyphs import PRESETS, Atlas, atlas_for, build_atlas
+from ..image_source import EXTENSIONS, StaticImageSource, load_image
 from ..modes import braille_indices, edge_indices
 from ..render import COLOR_THEME, THEMES, compose, to_qimage, to_qimage_color, to_text
 from .controls import ControlsPanel
@@ -97,6 +98,8 @@ class MainWindow(QMainWindow):
         self._fps_t = time.perf_counter()
         self._ms = 0.0
         self._res = ""
+        self._dirty = False  # forzar re-render (cambio de ajustes con fuente estática o en pausa)
+        self.setAcceptDrops(True)
 
         self.viewport = Viewport()
         self.panel = ControlsPanel(settings)
@@ -114,6 +117,14 @@ class MainWindow(QMainWindow):
         self.panel.changed.connect(self._on_changed)
         self.panel.retry_clicked.connect(self._restart_camera)
         self.panel.reset_clicked.connect(self._reset)
+        self.panel.open_image_clicked.connect(self.open_image_dialog)
+        self.panel.use_camera_clicked.connect(self.use_camera)
+        menu = self.menuBar().addMenu("Archivo")
+        act_open = QAction("Abrir imagen…", self, shortcut=QKeySequence.StandardKey.Open)
+        act_open.triggered.connect(self.open_image_dialog)
+        act_cam = QAction("Usar cámara", self)
+        act_cam.triggered.connect(self.use_camera)
+        menu.addActions([act_open, act_cam])
         for key, fn in (("Space", self._toggle_pause), ("S", self.save_files),
                         ("F", self._toggle_fullscreen), ("P", self._toggle_panel),
                         (QKeySequence.StandardKey.Copy, self.copy_text)):
@@ -132,11 +143,12 @@ class MainWindow(QMainWindow):
         self._atlas, self._levels = atlas_for(st.mode, st.palette_name, self._full_atlas)
         self._engine = Engine(max(self._levels, 2), st.gamma, st.smoothing)
         self.viewport.set_background(THEMES[st.theme][0])
+        self._dirty = True
 
     def _on_changed(self, name: str) -> None:
         self.panel.read_into(self.settings)
         if name == "camera_index":
-            self._restart_camera()
+            self._restart_camera()  # elegir cámara también vuelve a la cámara si había imagen
         else:
             self._rebuild_pipeline()
 
@@ -146,12 +158,57 @@ class MainWindow(QMainWindow):
         self._rebuild_pipeline()
         self._restart_camera()
 
-    def _restart_camera(self) -> None:
+    def _set_source(self, source) -> None:
         self.cam.stop()
         self._last_seq, self._res = 0, ""
-        self.viewport.set_message("Conectando con la cámara…")
-        self.cam = self._factory(self.settings.camera_index)
+        self.cam = source
         self.cam.start()
+        self._dirty = True
+
+    def _restart_camera(self) -> None:
+        """Abre (o reabre) la cámara; también sirve para volver desde una imagen."""
+        self.viewport.set_message("Conectando con la cámara…")
+        self._set_source(self._factory(self.settings.camera_index))
+
+    use_camera = _restart_camera
+
+    @property
+    def _is_static(self) -> bool:
+        return getattr(self.cam, "is_static", False)
+
+    def load_image_file(self, path: str) -> bool:
+        """Cambia la fuente a una imagen. Devuelve False (y avisa) si no se puede leer."""
+        try:
+            frame = load_image(path)
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc), 6000)
+            return False
+        self._set_source(StaticImageSource(frame, Path(path).name))
+        return True
+
+    def open_image_dialog(self) -> None:
+        exts = " ".join(f"*{e}" for e in EXTENSIONS)
+        path, _ = QFileDialog.getOpenFileName(self, "Abrir imagen", str(Path.home() / "Pictures"),
+                                              f"Imágenes ({exts})")
+        if path:
+            self.load_image_file(path)
+
+    # --- arrastrar y soltar ------------------------------------------------
+    @staticmethod
+    def _dropped_image(event) -> str | None:
+        for url in event.mimeData().urls():
+            if url.isLocalFile() and url.toLocalFile().lower().endswith(EXTENSIONS):
+                return url.toLocalFile()
+        return None
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._dropped_image(event):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        path = self._dropped_image(event)
+        if path:
+            self.load_image_file(path)
 
     # --- bucle -------------------------------------------------------------
     def _tick(self) -> None:
@@ -163,15 +220,16 @@ class MainWindow(QMainWindow):
             self.viewport.set_message("Reconectando con la cámara…")
         elif frame is None:
             self.viewport.set_message("Conectando con la cámara…")
-        if frame is not None and seq != self._last_seq and not self._paused:
-            self._last_seq = seq
+        new = seq != self._last_seq
+        if frame is not None and (self._dirty or (new and not self._paused)):
+            self._last_seq, self._dirty = seq, False
             self._process(frame)
         self._update_status(state)
 
     def _process(self, frame: np.ndarray) -> None:
         t0 = time.perf_counter()
         st = self.settings
-        if st.mirror:
+        if st.mirror and not self._is_static:  # el espejo es para la cámara, no para archivos
             frame = frame[:, ::-1]
         h, w = frame.shape[:2]
         self._res = f"{w}×{h}"
@@ -204,7 +262,9 @@ class MainWindow(QMainWindow):
         dot = "●" if state is State.LIVE else "○"
         parts = [f"{dot} {STATE_TEXT[state]}" + (" (pausa)" if self._paused else "")]
         if self._res:
-            parts.append(f"Cámara {self.settings.camera_index} {self._res}")
+            src = (f"Imagen {self.cam.name}" if self._is_static
+                   else f"Cámara {self.settings.camera_index}")
+            parts.append(f"{src} {self._res}")
         if self._idx is not None:
             parts.append(f"{self._idx.shape[1]}×{self._idx.shape[0]} celdas")
             parts.append(f"{self._fps:.0f} fps · {self._ms:.1f} ms")

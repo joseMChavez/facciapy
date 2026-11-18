@@ -15,6 +15,8 @@ class ControlsPanel(QWidget):
     changed = Signal(str)  # nombre del ajuste modificado
     retry_clicked = Signal()
     reset_clicked = Signal()
+    open_image_clicked = Signal()
+    use_camera_clicked = Signal()
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -31,6 +33,15 @@ class ControlsPanel(QWidget):
         self.mirror = QCheckBox("Espejo")
         self.mirror.toggled.connect(lambda _: self.changed.emit("mirror"))
         src.addRow("Cámara", self.camera)
+        row = QHBoxLayout()
+        open_btn = QPushButton("Abrir imagen…")
+        open_btn.setToolTip("Genera arte ASCII desde un archivo (también puedes arrastrarlo)")
+        open_btn.clicked.connect(self.open_image_clicked)
+        cam_btn = QPushButton("Usar cámara")
+        cam_btn.clicked.connect(self.use_camera_clicked)
+        row.addWidget(open_btn)
+        row.addWidget(cam_btn)
+        src.addRow(row)
         src.addRow("", self.mirror)
         root.addWidget(self._group("Fuente", src))
 
