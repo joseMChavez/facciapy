@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "facia-app"
+version = "0.1.0"
+description = "Cámara web convertida en arte ASCII, en consola o con interfaz gráfica."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6-Essentials>=6.7"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+facia = "facia_app.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
