@@ -40,3 +40,22 @@ def test_static_scene_low_flicker():
             rates.append((idx != prev).mean() * 100)
         prev = idx
     assert np.mean(rates) < 5
+
+
+def test_colors_shape_and_vividness():
+    f = np.zeros((720, 1280, 3), np.uint8)
+    f[:] = (40, 40, 160)  # BGR: rojo apagado
+    c = Engine(10, smoothing=1.0).colors(f, 40, 12)
+    assert c.shape == (12, 40, 3) and c.dtype == np.uint8
+    r, g, b = c[0, 0]
+    assert r == 255 and g < 100 and b < 100  # rojo normalizado y saturado
+
+
+def test_colors_dark_not_amplified():
+    f = np.full((720, 1280, 3), 3, np.uint8)
+    c = Engine(10, smoothing=1.0).colors(f, 20, 6)
+    assert c.max() < 40
+
+
+def test_colors_tiny_grid():
+    assert Engine(10).colors(frame(), 0, 0).shape == (1, 1, 3)

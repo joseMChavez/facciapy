@@ -1,5 +1,6 @@
 """Índices de nivel -> imagen / texto."""
 
+import cv2
 import numpy as np
 from PySide6.QtGui import QImage, qRgb
 
@@ -10,7 +11,9 @@ THEMES: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
     "Mono": ((13, 15, 18), (235, 240, 245)),
     "Fósforo": ((5, 12, 6), (90, 255, 120)),
     "Ámbar": ((16, 10, 2), (255, 176, 0)),
+    "Color real": ((0, 0, 0), (255, 255, 255)),
 }
+COLOR_THEME = "Color real"
 
 
 def compose(idx: np.ndarray, atlas: Atlas) -> np.ndarray:
@@ -30,6 +33,18 @@ def to_qimage(gray: np.ndarray, theme: str) -> QImage:
     ]
     img.setColorTable(table)
     return img.copy()  # desacopla del buffer numpy
+
+
+def to_qimage_color(gray: np.ndarray, colors: np.ndarray, cell_w: int, cell_h: int) -> QImage:
+    """Tiñe cada celda con su color: píxel = color * cobertura (fondo negro).
+
+    Usa operaciones de OpenCV (SIMD) en lugar de aritmética numpy a resolución completa.
+    """
+    h, w = gray.shape
+    big = cv2.resize(np.ascontiguousarray(colors), (w, h), interpolation=cv2.INTER_NEAREST)
+    cov = cv2.merge([gray, gray, gray])
+    out = np.ascontiguousarray(cv2.multiply(big, cov, scale=1 / 255))
+    return QImage(out.data, w, h, w * 3, QImage.Format.Format_RGB888).copy()
 
 
 def to_text(idx: np.ndarray, atlas: Atlas) -> str:

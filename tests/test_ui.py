@@ -69,3 +69,11 @@ def test_window_renders_frame(app):
     win.panel.palette.setCurrentText("Detallada")
     assert len(win._atlas.chars) == len(PRESETS["Detallada"])
     win.close()
+
+
+def test_color_theme_renders(app):
+    win = MainWindow(Settings(detail=60, theme="Color real"), camera_factory=FakeCam)
+    win._tick()
+    img = win._image
+    assert img is not None and img.format().name == "Format_RGB888"
+    win.close()

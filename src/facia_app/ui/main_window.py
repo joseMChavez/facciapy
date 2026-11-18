@@ -15,7 +15,7 @@ from ..capture import CameraSource, State
 from ..config import Settings
 from ..engine import Engine, fit_grid
 from ..glyphs import PRESETS, Atlas, build_atlas, pick_palette
-from ..render import THEMES, compose, to_qimage, to_text
+from ..render import COLOR_THEME, THEMES, compose, to_qimage, to_qimage_color, to_text
 from .controls import ControlsPanel
 from .viewport import Viewport
 
@@ -174,7 +174,12 @@ class MainWindow(QMainWindow):
         cols, rows = fit_grid((h, w), st.detail, 10**6, self._atlas.aspect)
         idx = self._engine.process(np.ascontiguousarray(frame), cols, rows)
         self._idx = idx
-        self._image = to_qimage(compose(idx, self._atlas), st.theme)
+        gray = compose(idx, self._atlas)
+        if st.theme == COLOR_THEME:
+            colors = self._engine.colors(np.ascontiguousarray(frame), cols, rows)
+            self._image = to_qimage_color(gray, colors, self._atlas.cell_w, self._atlas.cell_h)
+        else:
+            self._image = to_qimage(gray, st.theme)
         self.viewport.set_message(None)
         self.viewport.set_image(self._image)
         self._ms = 0.8 * self._ms + 0.2 * (time.perf_counter() - t0) * 1000
