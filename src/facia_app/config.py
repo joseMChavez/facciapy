@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 
 
+MODES = ("ASCII", "Bloques", "Braille", "Bordes")
+
+
 @dataclass
 class Settings:
     camera_index: int = 0
@@ -15,3 +18,5 @@ class Settings:
     palette_name: str = "Simple"
     theme: str = "Mono"
     detail: int = 120  # columnas de la rejilla
+    mode: str = "ASCII"
+    edge_sensitivity: int = 50  # 0..100, solo modo Bordes

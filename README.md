@@ -41,6 +41,20 @@ docs/facia_legacy.py  script original de referencia
 
 Hoja de ruta: ver [docs/PROMPT.md](docs/PROMPT.md).
 
+## Modos de render
+
+ASCII · Bloques · Braille (2×4 puntos por celda, 8× más resolución, dithering Bayer) · Bordes (`| / - \\` según el gradiente de Sobel). Combinables con los colores Mono, Fósforo, Ámbar y Color real.
+
+## Imágenes
+
+`Archivo → Abrir imagen…` (Cmd+O), el botón del panel o arrastrar un archivo sobre la ventana. Formatos: PNG, JPG, BMP, WebP, GIF (primer fotograma) y TIFF. Respeta la orientación EXIF; la transparencia se compone sobre negro. «Usar cámara» vuelve a la cámara.
+
+## Exportar
+
+`S` o `Archivo → Exportar imagen…`: PNG (por defecto) o JPEG, a escala 1×–4×. A mayor escala los glifos se **re-renderizan** con una fuente más grande (texto nítido, no un reescalado). Opcionalmente guarda también el `.txt`.
+
+**PNG es lo recomendado**: en pruebas pesó entre 10 y 100 veces menos que JPEG (p. ej. 44 KB frente a 1,8 MB a 3480×1960 en Mono/ASCII) y no deja halos en los caracteres. JPEG se ofrece solo por compatibilidad. Límite de 40 MP por exportación.
+
 ## Atajos
 
-Espacio pausa · S guardar PNG+TXT · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel
+Espacio pausa · S exportar · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel
