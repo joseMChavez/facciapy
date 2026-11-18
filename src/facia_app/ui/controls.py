@@ -18,6 +18,7 @@ class ControlsPanel(QWidget):
     reset_clicked = Signal()
     open_image_clicked = Signal()
     use_camera_clicked = Signal()
+    export_clicked = Signal()
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -88,6 +89,11 @@ class ControlsPanel(QWidget):
             self.face.setToolTip("Recorta y encuadra automáticamente el rostro, con movimiento suave")
         fr.addRow(self.face)
         root.addWidget(self._group("Encuadre", fr))
+
+        self.export = QPushButton("Exportar imagen…  (S)")
+        self.export.setToolTip("Guarda el resultado como PNG (recomendado) o JPEG, hasta 4× de escala")
+        self.export.clicked.connect(self.export_clicked)
+        root.addWidget(self.export)
 
         self.retry = QPushButton("Reintentar cámara")
         self.retry.clicked.connect(self.retry_clicked)

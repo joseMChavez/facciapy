@@ -143,3 +143,25 @@ def test_window_exports_current_frame(app, tmp_path, theme):
     save_image(img, str(out), "PNG")
     assert QImage(str(out)).size().width() == export_size(cols, rows, 2)[0]
     win.close()
+
+
+def test_export_button_runs_full_flow(app, tmp_path, monkeypatch):
+    """Botón del panel -> diálogo -> guardar; sin extensión en el nombre, se añade .png."""
+    from PySide6.QtWidgets import QFileDialog
+
+    from facia_app.ui import main_window as mw
+    target = str(tmp_path / "salida")
+    monkeypatch.setattr(mw.ExportDialog, "exec", lambda self: 1)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (target, "")))
+    win = MainWindow(Settings(detail=60), camera_factory=FakeCam)
+    win._tick()
+    win.panel.export.click()
+    assert (tmp_path / "salida.png").stat().st_size > 0
+    assert "Exportado" in win.statusBar().currentMessage()
+    win.close()
+
+
+def test_export_without_frame_does_nothing(app):
+    win = MainWindow(Settings(), camera_factory=FakeCam)
+    win.export_image()  # aún no hay frame procesado: no debe fallar ni abrir diálogos
+    win.close()
