@@ -15,6 +15,8 @@ CANDIDATES = " .'`^\",:;Il!i><~=+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&
 BLOCK_CHARS = " ░▒▓█"
 FULL_CHARS = CANDIDATES + "\\" + BLOCK_CHARS[1:]  # + "\" (bordes) y bloques (el espacio ya está)
 
+BASE_PX = 16  # tamaño de fuente de pantalla; la exportación lo multiplica
+
 PRESETS: dict[str, str | None] = {
     "Simple": " .:-=+*#%@",
     "Detallada": " .,:;-~=+!*ox#%&@",
@@ -47,8 +49,8 @@ def _to_array(img: QImage, cw: int, ch: int) -> np.ndarray:
     return buf[:, :cw].copy()
 
 
-def build_atlas(chars: str = FULL_CHARS, family: str = "Menlo", px: int = 16) -> Atlas:
-    """Renderiza los glifos (requiere QGuiApplication) y los ordena por tinta."""
+def render_glyphs(chars: str, family: str = "Menlo", px: int = BASE_PX) -> Atlas:
+    """Renderiza los glifos EN EL ORDEN DADO (requiere QGuiApplication)."""
     font = _font(family, px)
     fm = QFontMetrics(font)
     cw, ch = fm.horizontalAdvance("M"), fm.height()
@@ -62,10 +64,35 @@ def build_atlas(chars: str = FULL_CHARS, family: str = "Menlo", px: int = 16) ->
         p.drawText(0, fm.ascent(), c)
         p.end()
         maps.append(_to_array(img, cw, ch))
-    bitmaps = np.stack(maps)
-    ink = bitmaps.reshape(len(chars), -1).sum(axis=1)
+    return Atlas(chars, np.stack(maps), cw, ch)
+
+
+def build_atlas(chars: str = FULL_CHARS, family: str = "Menlo", px: int = BASE_PX) -> Atlas:
+    """Atlas con los glifos ordenados por tinta real (de menos a más)."""
+    atlas = render_glyphs(chars, family, px)
+    ink = atlas.bitmaps.reshape(len(chars), -1).sum(axis=1)
     order = np.argsort(ink, kind="stable")
-    return Atlas("".join(chars[i] for i in order), bitmaps[order], cw, ch)
+    return Atlas("".join(chars[i] for i in order), atlas.bitmaps[order], atlas.cell_w, atlas.cell_h)
+
+
+@lru_cache(maxsize=6)
+def cell_size(px: int, family: str = "Menlo") -> tuple[int, int]:
+    """(ancho, alto) de celda de la fuente a ese tamaño."""
+    fm = QFontMetrics(_font(family, px))
+    return fm.horizontalAdvance("M"), fm.height()
+
+
+def rescale_atlas(atlas: Atlas, mode: str, px: int, family: str = "Menlo") -> Atlas:
+    """El mismo atlas (mismos caracteres, mismo orden de índices) a otro tamaño de fuente.
+
+    Imprescindible para exportar a mayor escala sin que los índices apunten a otro glifo.
+    """
+    cw, ch = cell_size(px, family)
+    if mode == "Braille":
+        return braille_atlas(cw, ch)
+    if mode == "Bloques":
+        return block_atlas(cw, ch)
+    return render_glyphs(atlas.chars, family, px)
 
 
 def pick_palette(atlas: Atlas, chars: str | None) -> Atlas:

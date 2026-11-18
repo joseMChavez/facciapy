@@ -8,17 +8,19 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QSettings, QTimer, Qt
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMainWindow, QStatusBar,
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QStatusBar,
                                QWidget)
 
 from ..capture import CameraSource, State
 from ..config import MODES, Settings
 from ..engine import Engine, fit_grid
+from ..export import FORMATS, ExportOptions, ensure_suffix, render_export, save_image
 from ..glyphs import PRESETS, Atlas, atlas_for, build_atlas
 from ..image_source import EXTENSIONS, StaticImageSource, load_image
 from ..modes import braille_indices, edge_indices
 from ..render import COLOR_THEME, THEMES, compose, to_qimage, to_qimage_color, to_text
 from .controls import ControlsPanel
+from .export_dialog import ExportDialog
 from .viewport import Viewport
 
 PERSISTED = ("camera_index", "mirror", "gamma", "smoothing", "detail", "palette_name", "theme",
@@ -91,6 +93,8 @@ class MainWindow(QMainWindow):
         self._engine: Engine | None = None
         self._idx: np.ndarray | None = None
         self._image = None
+        self._colors: np.ndarray | None = None  # color por celda (solo tema Color real)
+        self._export_opts = ExportOptions()
         self._paused = False
         self._last_seq = 0
         self._frames = 0
@@ -124,8 +128,14 @@ class MainWindow(QMainWindow):
         act_open.triggered.connect(self.open_image_dialog)
         act_cam = QAction("Usar cámara", self)
         act_cam.triggered.connect(self.use_camera)
+        act_export = QAction("Exportar imagen…", self)
+        act_export.triggered.connect(self.export_image)
+        act_copy = QAction("Copiar texto ASCII", self)
+        act_copy.triggered.connect(self.copy_text)
         menu.addActions([act_open, act_cam])
-        for key, fn in (("Space", self._toggle_pause), ("S", self.save_files),
+        menu.addSeparator()
+        menu.addActions([act_export, act_copy])
+        for key, fn in (("Space", self._toggle_pause), ("S", self.export_image),
                         ("F", self._toggle_fullscreen), ("P", self._toggle_panel),
                         (QKeySequence.StandardKey.Copy, self.copy_text)):
             QShortcut(QKeySequence(key), self, activated=fn)
@@ -245,9 +255,11 @@ class MainWindow(QMainWindow):
         self._idx = idx
         gray = compose(idx, self._atlas)
         if st.theme == COLOR_THEME:
-            colors = self._engine.colors(frame, cols, rows)
-            self._image = to_qimage_color(gray, colors, self._atlas.cell_w, self._atlas.cell_h)
+            self._colors = self._engine.colors(frame, cols, rows)
+            self._image = to_qimage_color(gray, self._colors, self._atlas.cell_w,
+                                          self._atlas.cell_h)
         else:
+            self._colors = None
             self._image = to_qimage(gray, st.theme)
         self.viewport.set_message(None)
         self.viewport.set_image(self._image)
@@ -285,17 +297,38 @@ class MainWindow(QMainWindow):
             QGuiApplication.clipboard().setText(to_text(self._idx, self._atlas))
             self.statusBar().showMessage("ASCII copiado", 2000)
 
-    def save_files(self) -> None:
-        if self._idx is None or self._image is None:
+    def export_image(self) -> None:
+        """Opciones -> destino -> render a la escala elegida -> guardar (+ .txt opcional)."""
+        if self._idx is None:
             return
-        default = str(Path.home() / "Pictures" / f"facia_{datetime.now():%Y%m%d_%H%M%S}.png")
-        path, _ = QFileDialog.getSaveFileName(self, "Guardar", default, "PNG (*.png)")
+        rows, cols = self._idx.shape
+        dlg = ExportDialog(cols, rows, self, self._export_opts)
+        if not dlg.exec():
+            return
+        opts = self._export_opts = dlg.options()
+        suffix = FORMATS[opts.fmt]
+        default = str(Path.home() / "Pictures" / f"facia_{datetime.now():%Y%m%d_%H%M%S}{suffix}")
+        label = "PNG (*.png)" if opts.fmt == "PNG" else "JPEG (*.jpg *.jpeg)"
+        path, _ = QFileDialog.getSaveFileName(self, "Exportar imagen", default, label)
         if not path:
             return
-        self._image.save(path)
-        Path(path).with_suffix(".txt").write_text(to_text(self._idx, self._atlas),
-                                                  encoding="utf-8")
-        self.statusBar().showMessage(f"Guardado: {path} (+ .txt)", 4000)
+        path = ensure_suffix(path, opts.fmt)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            img = render_export(self._idx, self._colors, self._atlas, self.settings.mode,
+                                self.settings.theme, opts.scale)
+            save_image(img, path, opts.fmt, opts.quality)
+            if opts.save_text:
+                Path(path).with_suffix(".txt").write_text(to_text(self._idx, self._atlas),
+                                                          encoding="utf-8")
+        except (OSError, ValueError, MemoryError) as exc:
+            self.statusBar().showMessage(f"No se pudo exportar: {exc}", 8000)
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        kb = Path(path).stat().st_size / 1024
+        self.statusBar().showMessage(
+            f"Exportado: {path} ({img.width()}×{img.height()} px, {kb:.0f} KB)", 6000)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.timer.stop()
