@@ -5,9 +5,10 @@ from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PySide6.QtCore import QSettings, QTimer, Qt
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QStatusBar,
                                QWidget)
 
@@ -24,7 +25,7 @@ from .export_dialog import ExportDialog
 from .viewport import Viewport
 
 PERSISTED = ("camera_index", "mirror", "gamma", "smoothing", "detail", "palette_name", "theme",
-             "mode", "edge_sensitivity")
+             "mode", "edge_sensitivity", "split_view")
 TICK_MS = 33
 
 PERMISSION_HELP = (
@@ -136,7 +137,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addActions([act_export, act_copy])
         for key, fn in (("Space", self._toggle_pause), ("S", self.export_image),
-                        ("F", self._toggle_fullscreen), ("P", self._toggle_panel),
+                        ("F", self._toggle_fullscreen), ("P", self._toggle_panel), ("O", self._toggle_split),
                         (QKeySequence.StandardKey.Copy, self.copy_text)):
             QShortcut(QKeySequence(key), self, activated=fn)
 
@@ -262,9 +263,20 @@ class MainWindow(QMainWindow):
             self._colors = None
             self._image = to_qimage(gray, st.theme)
         self.viewport.set_message(None)
+        self.viewport.set_original(self._original_image(frame) if st.split_view else None)
         self.viewport.set_image(self._image)
         self._ms = 0.8 * self._ms + 0.2 * (time.perf_counter() - t0) * 1000
         self._frames += 1
+
+    @staticmethod
+    def _original_image(frame: np.ndarray, max_w: int = 640) -> QImage:
+        """El frame tal como se procesó (espejo/recorte incluidos), listo para mostrar."""
+        h, w = frame.shape[:2]
+        if w > max_w:
+            frame = cv2.resize(frame, (max_w, max(1, h * max_w // w)), interpolation=cv2.INTER_AREA)
+        rgb = np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        hh, ww = rgb.shape[:2]
+        return QImage(rgb.data, ww, hh, ww * 3, QImage.Format.Format_RGB888).copy()
 
     def _update_status(self, state: State) -> None:
         now = time.perf_counter()
@@ -288,6 +300,9 @@ class MainWindow(QMainWindow):
 
     def _toggle_fullscreen(self) -> None:
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
+
+    def _toggle_split(self) -> None:
+        self.panel.split.toggle()  # emite "changed" y actualiza ajustes y visor
 
     def _toggle_panel(self) -> None:
         self.panel.setVisible(not self.panel.isVisible())

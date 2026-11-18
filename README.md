@@ -57,4 +57,4 @@ ASCII · Bloques · Braille (2×4 puntos por celda, 8× más resolución, dither
 
 ## Atajos
 
-Espacio pausa · S exportar · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel
+Espacio pausa · S exportar · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel · O vista dividida Original | ASCII

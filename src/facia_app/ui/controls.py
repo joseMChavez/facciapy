@@ -42,7 +42,11 @@ class ControlsPanel(QWidget):
         row.addWidget(open_btn)
         row.addWidget(cam_btn)
         src.addRow(row)
+        self.split = QCheckBox("Vista dividida (O)")
+        self.split.setToolTip("Muestra el original junto al ASCII para comparar")
+        self.split.toggled.connect(lambda _: self.changed.emit("split_view"))
         src.addRow("", self.mirror)
+        src.addRow("", self.split)
         root.addWidget(self._group("Fuente", src))
 
         img = QFormLayout()
@@ -118,12 +122,13 @@ class ControlsPanel(QWidget):
         return s
 
     def set_values(self, st: Settings) -> None:
-        widgets = [self.camera, self.mirror, self.gamma, self.stability, self.palette,
+        widgets = [self.camera, self.mirror, self.split, self.gamma, self.stability, self.palette,
                    self.theme, self.detail, self.mode, self.edges]
         for w in widgets:
             w.blockSignals(True)
         self.camera.setCurrentIndex(max(0, min(CAMERAS - 1, st.camera_index)))
         self.mirror.setChecked(st.mirror)
+        self.split.setChecked(st.split_view)
         self.gamma.setValue(round(st.gamma * 100))
         self.stability.setValue(round((1 - st.smoothing) * 100))
         self.palette.setCurrentText(st.palette_name)
@@ -141,6 +146,7 @@ class ControlsPanel(QWidget):
     def read_into(self, st: Settings) -> None:
         st.camera_index = int(self.camera.currentData())
         st.mirror = self.mirror.isChecked()
+        st.split_view = self.split.isChecked()
         st.gamma = self.gamma.value() / 100
         st.smoothing = 1 - self.stability.value() / 100
         st.palette_name = self.palette.currentText()

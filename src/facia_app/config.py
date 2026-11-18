@@ -20,3 +20,4 @@ class Settings:
     detail: int = 120  # columnas de la rejilla
     mode: str = "ASCII"
     edge_sensitivity: int = 50  # 0..100, solo modo Bordes
+    split_view: bool = False  # Original | ASCII
