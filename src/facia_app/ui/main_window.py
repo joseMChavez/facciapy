@@ -52,6 +52,10 @@ QComboBox, QPushButton { background: #1d222a; border: 1px solid #2f3542; border-
   padding: 4px 8px; }
 QPushButton:hover { background: #262c36; }
 QStatusBar { color: #8b95a7; }
+QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #5a6475;
+  border-radius: 3px; background: #1d222a; }
+QCheckBox::indicator:checked { background: #4c9aff; border-color: #4c9aff; }
+QCheckBox::indicator:disabled { border-color: #343a46; }
 """
 
 
@@ -126,6 +130,7 @@ class MainWindow(QMainWindow):
         self.panel.reset_clicked.connect(self._reset)
         self.panel.open_image_clicked.connect(self.open_image_dialog)
         self.panel.use_camera_clicked.connect(self.use_camera)
+        self.panel.export_clicked.connect(self.export_image)
         menu = self.menuBar().addMenu("Archivo")
         act_open = QAction("Abrir imagen…", self, shortcut=QKeySequence.StandardKey.Open)
         act_open.triggered.connect(self.open_image_dialog)
