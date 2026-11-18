@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QGroupBox, QHB
                                QPushButton, QSlider, QVBoxLayout, QWidget)
 
 from ..config import MODES, Settings
+from ..face import MODEL_NAME, MODEL_URL, model_path
 from ..glyphs import PRESETS
 from ..render import THEMES
 
@@ -76,6 +77,18 @@ class ControlsPanel(QWidget):
                                   lambda v: f"{v}%", "Sensibilidad de bordes (modo Bordes)")
         root.addWidget(self._group("Estilo", sty))
 
+        fr = QFormLayout()
+        self.face = QCheckBox("Seguir rostro")
+        self.face.toggled.connect(lambda _: self.changed.emit("face_follow"))
+        if model_path() is None:
+            self.face.setEnabled(False)
+            self.face.setToolTip(f"Falta el modelo {MODEL_NAME}.\nDescárgalo de {MODEL_URL}\n"
+                                 "y guárdalo en la carpeta models/ (ver README).")
+        else:
+            self.face.setToolTip("Recorta y encuadra automáticamente el rostro, con movimiento suave")
+        fr.addRow(self.face)
+        root.addWidget(self._group("Encuadre", fr))
+
         self.retry = QPushButton("Reintentar cámara")
         self.retry.clicked.connect(self.retry_clicked)
         reset = QPushButton("Restablecer ajustes")
@@ -122,13 +135,14 @@ class ControlsPanel(QWidget):
         return s
 
     def set_values(self, st: Settings) -> None:
-        widgets = [self.camera, self.mirror, self.split, self.gamma, self.stability, self.palette,
+        widgets = [self.camera, self.mirror, self.split, self.face, self.gamma, self.stability, self.palette,
                    self.theme, self.detail, self.mode, self.edges]
         for w in widgets:
             w.blockSignals(True)
         self.camera.setCurrentIndex(max(0, min(CAMERAS - 1, st.camera_index)))
         self.mirror.setChecked(st.mirror)
         self.split.setChecked(st.split_view)
+        self.face.setChecked(st.face_follow and self.face.isEnabled())
         self.gamma.setValue(round(st.gamma * 100))
         self.stability.setValue(round((1 - st.smoothing) * 100))
         self.palette.setCurrentText(st.palette_name)
@@ -147,6 +161,7 @@ class ControlsPanel(QWidget):
         st.camera_index = int(self.camera.currentData())
         st.mirror = self.mirror.isChecked()
         st.split_view = self.split.isChecked()
+        st.face_follow = self.face.isChecked()
         st.gamma = self.gamma.value() / 100
         st.smoothing = 1 - self.stability.value() / 100
         st.palette_name = self.palette.currentText()

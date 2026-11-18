@@ -21,3 +21,4 @@ class Settings:
     mode: str = "ASCII"
     edge_sensitivity: int = 50  # 0..100, solo modo Bordes
     split_view: bool = False  # Original | ASCII
+    face_follow: bool = False  # recortar siguiendo el rostro (requiere el modelo YuNet)

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, Q
 
 from ..capture import CameraSource, State
 from ..config import MODES, Settings
+from .. import face
 from ..engine import Engine, fit_grid
 from ..export import FORMATS, ExportOptions, ensure_suffix, render_export, save_image
 from ..glyphs import PRESETS, Atlas, atlas_for, build_atlas
@@ -25,7 +26,7 @@ from .export_dialog import ExportDialog
 from .viewport import Viewport
 
 PERSISTED = ("camera_index", "mirror", "gamma", "smoothing", "detail", "palette_name", "theme",
-             "mode", "edge_sensitivity", "split_view")
+             "mode", "edge_sensitivity", "split_view", "face_follow")
 TICK_MS = 33
 
 PERMISSION_HELP = (
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self._fps_t = time.perf_counter()
         self._ms = 0.0
         self._res = ""
+        self._tracker: face.FaceTracker | None = None
         self._dirty = False  # forzar re-render (cambio de ajustes con fuente estática o en pausa)
         self.setAcceptDrops(True)
 
@@ -158,6 +160,8 @@ class MainWindow(QMainWindow):
 
     def _on_changed(self, name: str) -> None:
         self.panel.read_into(self.settings)
+        if name in ("face_follow", "mirror"):
+            self._tracker = None  # se recrea al siguiente frame (coordenadas distintas con espejo)
         if name == "camera_index":
             self._restart_camera()  # elegir cámara también vuelve a la cámara si había imagen
         else:
@@ -173,6 +177,7 @@ class MainWindow(QMainWindow):
         self.cam.stop()
         self._last_seq, self._res = 0, ""
         self.cam = source
+        self._tracker = None
         self.cam.start()
         self._dirty = True
 
@@ -242,6 +247,8 @@ class MainWindow(QMainWindow):
         st = self.settings
         if st.mirror and not self._is_static:  # el espejo es para la cámara, no para archivos
             frame = frame[:, ::-1]
+        if st.face_follow:
+            frame = self._follow_face(frame)
         h, w = frame.shape[:2]
         self._res = f"{w}×{h}"
         cols, rows = fit_grid((h, w), st.detail, 10**6, self._atlas.aspect)
@@ -268,6 +275,27 @@ class MainWindow(QMainWindow):
         self._ms = 0.8 * self._ms + 0.2 * (time.perf_counter() - t0) * 1000
         self._frames += 1
 
+    def _follow_face(self, frame: np.ndarray) -> np.ndarray:
+        """Recorta al rostro. Si no se puede cargar el modelo, desactiva la función con aviso."""
+        if self._tracker is None:
+            try:
+                self._tracker = face.make_tracker()
+            except Exception as exc:  # cv2.error u otros al cargar el .onnx
+                self._tracker = None
+                self._disable_face(f"No se pudo cargar el modelo de rostro: {exc}")
+                return frame
+            if self._tracker is None:
+                self._disable_face(f"Falta el modelo {face.MODEL_NAME} (ver README)")
+                return frame
+        return self._tracker.crop(np.ascontiguousarray(frame))
+
+    def _disable_face(self, message: str) -> None:
+        self.settings.face_follow = False
+        self.panel.face.blockSignals(True)
+        self.panel.face.setChecked(False)
+        self.panel.face.blockSignals(False)
+        self.statusBar().showMessage(message, 8000)
+
     @staticmethod
     def _original_image(frame: np.ndarray, max_w: int = 640) -> QImage:
         """El frame tal como se procesó (espejo/recorte incluidos), listo para mostrar."""
@@ -289,6 +317,8 @@ class MainWindow(QMainWindow):
             src = (f"Imagen {self.cam.name}" if self._is_static
                    else f"Cámara {self.settings.camera_index}")
             parts.append(f"{src} {self._res}")
+        if self.settings.face_follow and self._tracker is not None:
+            parts.append("rostro ✓" if self._tracker.has_face else "buscando rostro…")
         if self._idx is not None:
             parts.append(f"{self._idx.shape[1]}×{self._idx.shape[0]} celdas")
             parts.append(f"{self._fps:.0f} fps · {self._ms:.1f} ms")
