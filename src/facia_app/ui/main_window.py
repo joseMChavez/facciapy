@@ -12,14 +12,16 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMainWindow, QS
                                QWidget)
 
 from ..capture import CameraSource, State
-from ..config import Settings
+from ..config import MODES, Settings
 from ..engine import Engine, fit_grid
-from ..glyphs import PRESETS, Atlas, build_atlas, pick_palette
+from ..glyphs import PRESETS, Atlas, atlas_for, build_atlas
+from ..modes import braille_indices, edge_indices
 from ..render import COLOR_THEME, THEMES, compose, to_qimage, to_qimage_color, to_text
 from .controls import ControlsPanel
 from .viewport import Viewport
 
-PERSISTED = ("camera_index", "mirror", "gamma", "smoothing", "detail", "palette_name", "theme")
+PERSISTED = ("camera_index", "mirror", "gamma", "smoothing", "detail", "palette_name", "theme",
+             "mode", "edge_sensitivity")
 TICK_MS = 33
 
 PERMISSION_HELP = (
@@ -61,6 +63,8 @@ def load_settings() -> Settings:
         setattr(st, f.name, val)
     if st.palette_name not in PRESETS:
         st.palette_name = Settings.palette_name
+    if st.mode not in MODES:
+        st.mode = Settings.mode
     if st.theme not in THEMES:
         st.theme = Settings.theme
     return st
@@ -125,8 +129,8 @@ class MainWindow(QMainWindow):
     # --- configuración ---------------------------------------------------
     def _rebuild_pipeline(self) -> None:
         st = self.settings
-        self._atlas = pick_palette(self._full_atlas, PRESETS[st.palette_name])
-        self._engine = Engine(len(self._atlas.chars), st.gamma, st.smoothing)
+        self._atlas, self._levels = atlas_for(st.mode, st.palette_name, self._full_atlas)
+        self._engine = Engine(max(self._levels, 2), st.gamma, st.smoothing)
         self.viewport.set_background(THEMES[st.theme][0])
 
     def _on_changed(self, name: str) -> None:
@@ -172,11 +176,18 @@ class MainWindow(QMainWindow):
         h, w = frame.shape[:2]
         self._res = f"{w}×{h}"
         cols, rows = fit_grid((h, w), st.detail, 10**6, self._atlas.aspect)
-        idx = self._engine.process(np.ascontiguousarray(frame), cols, rows)
+        frame = np.ascontiguousarray(frame)
+        if st.mode == "Braille":
+            idx = braille_indices(self._engine.gray(frame, cols * 2, rows * 4))
+        elif st.mode == "Bordes":
+            hi = self._engine.gray(frame, cols * 2, rows * 4)
+            idx = edge_indices(hi, self._levels, st.edge_sensitivity / 100)
+        else:
+            idx = self._engine.process(frame, cols, rows)
         self._idx = idx
         gray = compose(idx, self._atlas)
         if st.theme == COLOR_THEME:
-            colors = self._engine.colors(np.ascontiguousarray(frame), cols, rows)
+            colors = self._engine.colors(frame, cols, rows)
             self._image = to_qimage_color(gray, colors, self._atlas.cell_w, self._atlas.cell_h)
         else:
             self._image = to_qimage(gray, st.theme)

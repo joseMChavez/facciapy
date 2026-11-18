@@ -19,13 +19,17 @@ class Engine:
         self._ema: np.ndarray | None = None
         self._color_ema: np.ndarray | None = None
 
-    def process(self, frame: np.ndarray, cols: int, rows: int) -> np.ndarray:
-        """Devuelve índices uint8 de forma (rows, cols). Tolera tamaños de 0 o 1."""
+    def gray(self, frame: np.ndarray, cols: int, rows: int) -> np.ndarray:
+        """Gris float32 (rows, cols) en 0..255: CLAHE + gamma + EMA temporal.
+
+        Sirve para cualquier rejilla; los modos de alta resolución (Braille, Bordes)
+        piden una rejilla de 2x4 puntos por celda.
+        """
         cols, rows = max(1, cols), max(1, rows)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h, w = gray.shape
-        work = cv2.resize(gray, (WORK_WIDTH, max(1, WORK_WIDTH * h // w)),
-                          interpolation=cv2.INTER_AREA)
+        ww = max(WORK_WIDTH, cols)  # nunca trabajar por debajo de la rejilla pedida
+        work = cv2.resize(gray, (ww, max(1, ww * h // w)), interpolation=cv2.INTER_AREA)
         work = self._clahe.apply(work)
         work = cv2.LUT(work, self._gamma)
         small = cv2.resize(work, (cols, rows), interpolation=cv2.INTER_AREA).astype(np.float32)
@@ -34,10 +38,13 @@ class Engine:
             self._ema = small
         else:
             self._ema = self.smoothing * small + (1 - self.smoothing) * self._ema
+        return self._ema
 
-        idx = np.rint(self._ema / 255 * (self.levels - 1))
+    def process(self, frame: np.ndarray, cols: int, rows: int) -> np.ndarray:
+        """Devuelve índices uint8 de forma (rows, cols). Tolera tamaños de 0 o 1."""
+        g = self.gray(frame, cols, rows)
+        idx = np.rint(g / 255 * (self.levels - 1))
         return np.clip(idx, 0, self.levels - 1).astype(np.uint8)
-
 
     def colors(self, frame: np.ndarray, cols: int, rows: int) -> np.ndarray:
         """Color por celda (rows, cols, 3) RGB uint8, vivo y estable.
@@ -48,8 +55,8 @@ class Engine:
         cols, rows = max(1, cols), max(1, rows)
         h, w = frame.shape[:2]
         # Dos pasos: primero a la resolución de trabajo (barato), luego a la rejilla
-        work = cv2.resize(frame, (WORK_WIDTH, max(1, WORK_WIDTH * h // w)),
-                          interpolation=cv2.INTER_AREA)
+        ww = max(WORK_WIDTH, cols)
+        work = cv2.resize(frame, (ww, max(1, ww * h // w)), interpolation=cv2.INTER_AREA)
         small = cv2.resize(work, (cols, rows), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB).astype(np.float32)
 

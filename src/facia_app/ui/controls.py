@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
                                QPushButton, QSlider, QVBoxLayout, QWidget)
 
-from ..config import Settings
+from ..config import MODES, Settings
 from ..glyphs import PRESETS
 from ..render import THEMES
 
@@ -48,10 +48,17 @@ class ControlsPanel(QWidget):
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
         self.theme.currentIndexChanged.connect(lambda _: self.changed.emit("theme"))
+        self.mode = QComboBox()
+        self.mode.addItems(MODES)
+        self.mode.setToolTip("ASCII · Bloques · Braille (8× más resolución) · Bordes")
+        self.mode.currentIndexChanged.connect(lambda _: self._mode_changed())
+        sty.addRow("Modo", self.mode)
         sty.addRow("Paleta", self.palette)
         sty.addRow("Color", self.theme)
         self.detail = self._slider(sty, "detail", "Detalle", 40, 240, lambda v: f"{v} col",
                                    "Columnas de caracteres")
+        self.edges = self._slider(sty, "edge_sensitivity", "Bordes", 0, 100,
+                                  lambda v: f"{v}%", "Sensibilidad de bordes (modo Bordes)")
         root.addWidget(self._group("Estilo", sty))
 
         self.retry = QPushButton("Reintentar cámara")
@@ -62,6 +69,15 @@ class ControlsPanel(QWidget):
         root.addWidget(reset)
         root.addStretch(1)
         self.set_values(settings)
+
+    def _mode_changed(self) -> None:
+        self._sync_enabled()
+        self.changed.emit("mode")
+
+    def _sync_enabled(self) -> None:
+        mode = self.mode.currentText()
+        self.palette.setEnabled(mode in ("ASCII", "Bordes"))
+        self.edges.setEnabled(mode == "Bordes")
 
     def _group(self, title: str, layout: QFormLayout) -> QGroupBox:
         box = QGroupBox(title)
@@ -92,7 +108,7 @@ class ControlsPanel(QWidget):
 
     def set_values(self, st: Settings) -> None:
         widgets = [self.camera, self.mirror, self.gamma, self.stability, self.palette,
-                   self.theme, self.detail]
+                   self.theme, self.detail, self.mode, self.edges]
         for w in widgets:
             w.blockSignals(True)
         self.camera.setCurrentIndex(max(0, min(CAMERAS - 1, st.camera_index)))
@@ -102,11 +118,14 @@ class ControlsPanel(QWidget):
         self.palette.setCurrentText(st.palette_name)
         self.theme.setCurrentText(st.theme)
         self.detail.setValue(st.detail)
+        self.mode.setCurrentText(st.mode)
+        self.edges.setValue(st.edge_sensitivity)
         for name, s in (("gamma", self.gamma), ("smoothing", self.stability),
-                        ("detail", self.detail)):
+                        ("detail", self.detail), ("edge_sensitivity", self.edges)):
             self._labels[name].setText(s._fmt(s.value()))  # type: ignore[attr-defined]
         for w in widgets:
             w.blockSignals(False)
+        self._sync_enabled()
 
     def read_into(self, st: Settings) -> None:
         st.camera_index = int(self.camera.currentData())
@@ -116,3 +135,5 @@ class ControlsPanel(QWidget):
         st.palette_name = self.palette.currentText()
         st.theme = self.theme.currentText()
         st.detail = self.detail.value()
+        st.mode = self.mode.currentText()
+        st.edge_sensitivity = self.edges.value()

@@ -41,6 +41,10 @@ docs/facia_legacy.py  script original de referencia
 
 Hoja de ruta: ver [docs/PROMPT.md](docs/PROMPT.md).
 
+## Modos de render
+
+ASCII · Bloques · Braille (2×4 puntos por celda, 8× más resolución, dithering Bayer) · Bordes (`| / - \\` según el gradiente de Sobel). Combinables con los colores Mono, Fósforo, Ámbar y Color real.
+
 ## Atajos
 
 Espacio pausa · S guardar PNG+TXT · Cmd+C copiar ASCII · F pantalla completa · P ocultar panel

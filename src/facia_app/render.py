@@ -48,6 +48,6 @@ def to_qimage_color(gray: np.ndarray, colors: np.ndarray, cell_w: int, cell_h: i
 
 
 def to_text(idx: np.ndarray, atlas: Atlas) -> str:
-    chars = np.frombuffer(atlas.chars.encode("utf-8"), np.uint8)[idx]
-    chars = np.hstack([chars, np.full((idx.shape[0], 1), 10, np.uint8)])
-    return chars.tobytes().decode("utf-8").rstrip("\n")
+    """Texto de la rejilla. Soporta caracteres multibyte (bloques, Braille)."""
+    table = np.array(list(atlas.chars))
+    return "\n".join("".join(row) for row in table[idx])
